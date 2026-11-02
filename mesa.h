@@ -32,6 +32,7 @@ struct Mesa{
 struct infojugador {
     int id_jugador;
     int tipo_ficha; // puma o perro
+    int pos_actual;
     struct Mesa *mesa;
 };
 
