@@ -30,15 +30,15 @@ void mapearVecinos(struct Mesa *mesa) {
             int actual = 3 + (fila * 5) + col;
 
             // conexiones perpendiculares
-            if (col > 0) agregarVecino(&mesa->casilla[actual], actual - 1); 
-            if (col < 4) agregarVecino(&mesa->casilla[actual], actual + 1); 
-            if (fila > 0) agregarVecino(&mesa->casilla[actual], actual - 5); 
-            if (fila < 4) agregarVecino(&mesa->casilla[actual], actual + 5); 
+            if (col > 0) agregarVecino(&mesa->casilla[actual], actual - 1); //izquierda
+            if (col < 4) agregarVecino(&mesa->casilla[actual], actual + 1);  //derecha
+            if (fila > 0) agregarVecino(&mesa->casilla[actual], actual - 5);  //arriba
+            if (fila < 4) agregarVecino(&mesa->casilla[actual], actual + 5);  //abajo
 
             // conexiones diagonales (solo en intersecciones donde fila+col es par)
             if ((fila + col) % 2 == 0) {
                 if (fila > 0 && col > 0) agregarVecino(&mesa->casilla[actual], actual - 6);
-                if (fila > 0 && col < 4) agregarVecino(&mesa->casilla[actual], actual - 4);  //OJO REVISAR
+                if (fila > 0 && col < 4) agregarVecino(&mesa->casilla[actual], actual - 4);  //OJO
                 if (fila < 4 && col > 0) agregarVecino(&mesa->casilla[actual], actual + 4);
                 if (fila < 4 && col < 4) agregarVecino(&mesa->casilla[actual], actual + 6);
             }
@@ -86,10 +86,11 @@ void inicializarMesa(struct Mesa *mesa) {
 
     mapearVecinos(mesa);
 
-    mesa->casilla[0].ocupante = puma;
+    // asignar ocupantes 
+    mesa->casilla[mesa->config.posiciones[0]].ocupante = puma;
     
-    for (int i = 16; i < num_casillas; i++) { //disposicion en las de abajo
-        mesa->casilla[i].ocupante = perro;
+    for (int i = 1; i <= 12; i++) { 
+        mesa->casilla[mesa->config.posiciones[i]].ocupante = perro;
     }
 }
 
@@ -117,10 +118,15 @@ void *rutinaJugador(void *arg) {
     struct infojugador *info = (struct infojugador *)arg;
     struct Mesa *mesa = info->mesa;
     
-    unsigned int seed = time(NULL) + info->id_jugador;
+    // semilla combinada para asegurar reproducibilidad y variacion entre hilos
+    unsigned int seed = mesa->config.seed + info->id_jugador;
+    
+    int min_t = mesa->config.min_time;
+    int max_t = mesa->config.max_time;
 
     while (mesa->juego_activo) {
-        int ms_retardo = (rand_r(&seed) % 251) + 50;
+        // retardo dinamico
+        int ms_retardo = (rand_r(&seed) % (max_t - min_t + 1)) + min_t;
         usleep(ms_retardo * 1000);
 
         if (!mesa->juego_activo) break;
@@ -137,7 +143,7 @@ void *rutinaJugador(void *arg) {
         }
 
         if (destino_salto != -1) {
-            // regla anti-deadlock 3 casillas puma
+            // regla evita deadlock 3 casillas puma
             int ids[3] = {pos_actual, vecino, destino_salto};
             for (int x = 0; x < 2; x++) { //bubble sort, ordena de menor a mayor
                 for (int y = 0; y < 2 - x; y++) {
@@ -199,8 +205,9 @@ void *rutinaJugador(void *arg) {
     return NULL;
 }
 
-void iniciarPartida(int id_mesa) {
+void iniciarPartida(int id_mesa, struct Config *config_juego) {
     struct Mesa mesa;
+    mesa.config = *config_juego; // asigna config a la mesa 
     
     mesa_hijo_ptr = &mesa;
     signal(SIGTERM, detener);
@@ -210,18 +217,18 @@ void iniciarPartida(int id_mesa) {
     pthread_t hilos[13];
     struct infojugador info_hilos[13];
 
-    // hilo Puma
+    // hilo puma
     info_hilos[0].id_jugador = 0;
     info_hilos[0].tipo_ficha = puma;
-    info_hilos[0].pos_actual = 0; 
+    info_hilos[0].pos_actual = mesa.config.posiciones[0]; // seteo desde archivo
     info_hilos[0].mesa = &mesa;
     pthread_create(&hilos[0], NULL, rutinaJugador, (void *)&info_hilos[0]);
 
-    // 12 hilos Perros
+    // 12 hilos perros
     for (int j = 1; j <= 12; j++) {
         info_hilos[j].id_jugador = j;
         info_hilos[j].tipo_ficha = perro;
-        info_hilos[j].pos_actual = 15 + j; 
+        info_hilos[j].pos_actual = mesa.config.posiciones[j]; // seteo desde archivo
         info_hilos[j].mesa = &mesa;
         pthread_create(&hilos[j], NULL, rutinaJugador, (void *)&info_hilos[j]);
     }

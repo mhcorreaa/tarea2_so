@@ -8,24 +8,25 @@
 #include <sys/wait.h>
 #include <ctype.h>
 #include <stdbool.h>
+#include <string.h> 
+#include <time.h>   
 
 pid_t *pid_mesas = NULL;
 int m_mesas = 0;
 
-void detenerJuego(int sig){ //funcion ctrl + c
+void detenerJuego(int sig){  //ctrl + c
     (void)sig;
     printf("\nInterrumpiendo Servidor. Cerrando todas las mesas.\n");
     
-    // enviar senal de aborto a los hijos
     for(int i = 0; i < m_mesas; i++){
         if(pid_mesas[i] > 0){
-            kill(pid_mesas[i], SIGTERM);
+            kill(pid_mesas[i], SIGTERM); //le manda la senal a las mesas
         }
     }
 
     for(int i = 0; i < m_mesas; i++){
         if(pid_mesas[i] > 0){
-            waitpid(pid_mesas[i], NULL, 0);
+            waitpid(pid_mesas[i], NULL, 0); //espera a que terminen
         }
     }
 
@@ -34,20 +35,65 @@ void detenerJuego(int sig){ //funcion ctrl + c
     exit(0);
 }
 
-// validar texto de entrada en invocacion
-bool esNumero(char *str) {
+bool esNumero(char *str) {  //revisa que los argumentos en la invocacion sean nros
     for (int i = 0; str[i] != '\0'; i++) {
         if (!isdigit(str[i])) return false;
     }
     return true;
 }
 
+void leerConfig(char *nombre_archivo, struct Config *config_juego) { //lee el archivo config
+    
+    FILE *read = fopen(nombre_archivo, "r");
+
+    if (read == NULL){
+
+        printf("Advertencia: No se encontro '%s', usando config predeterminada.\n", nombre_archivo);
+        return;
+    }
+
+    char buffer[512];
+
+    while (fgets(buffer, sizeof(buffer), read) != NULL){
+
+        char *linea = buffer;
+        
+        char *clave = strsep(&linea, ":");
+        char *valor = strsep(&linea, "\n"); 
+        
+        if (valor != NULL) valor[strcspn(valor, "\r")] = '\0'; //por si config.txt lo crean en windows
+
+        if (clave != NULL && valor != NULL && strlen(valor) > 0){
+
+            if (strcmp(clave, "seed") == 0) config_juego->seed = (unsigned int)atoi(valor);
+            
+            else if (strcmp(clave, "min_time") == 0) config_juego->min_time = atoi(valor);
+                
+            else if (strcmp(clave, "max_time") == 0) config_juego->max_time = atoi(valor);
+                
+            else if (strcmp(clave, "positions") == 0) {
+                
+                char *pos_str = valor;
+
+                for (int i = 0; i < 13; i++) {
+
+                    char *num = strsep(&pos_str, ",");
+
+                    if (num != NULL && strlen(num) > 0) config_juego->posiciones[i] = atoi(num);
+                }
+            }
+        }
+    }
+    fclose(read);
+    printf("Configuracion cargada desde '%s'.\n", nombre_archivo);
+}
+
 int main(int argc, char *argv[]){
 
-    signal(SIGINT, detenerJuego); //ctrl + c
+    signal(SIGINT, detenerJuego); 
 
-    if (argc != 3) {
-        printf("Uso: %s <N_jugadores> <M_mesas>\n", argv[0]);
+    if (argc < 3 || argc > 4) {
+        printf("Uso: %s <N_jugadores> <M_mesas> [config.txt]\n", argv[0]);
         return -1;
     }
 
@@ -59,54 +105,94 @@ int main(int argc, char *argv[]){
     int n_jugadores = atoi(argv[1]);
     m_mesas = atoi(argv[2]);
 
-    // grupos de 2 jugadores
-    if (n_jugadores < 2 || n_jugadores % 2 != 0 || m_mesas < 1) {
-        printf("ERROR: Deben haber minimo 2 jugadores\n");
+    if (n_jugadores < 2 || m_mesas < 1) {
+        printf("ERROR: Deben haber minimo 2 jugadores y 1 mesa\n");
         return -1;
     }
 
-    int partidas_posibles = n_jugadores / 2;
-    int mesas_por_crear;
-
-    if (partidas_posibles < m_mesas) {
-        mesas_por_crear = partidas_posibles;
-    } else {
-        mesas_por_crear = m_mesas;
+    struct Config config_juego;
+    config_juego.min_time = 50;
+    config_juego.max_time = 300;
+    config_juego.seed = time(NULL);
+    config_juego.posiciones[0] = 0; 
+    for (int i = 1; i <= 12; i++) {
+        config_juego.posiciones[i] = 15 + i; 
     }
 
-    printf("Iniciando servidor: %d jugadores formaran %d partidas concurrentes (Max mesas: %d)\n", n_jugadores, mesas_por_crear, m_mesas);
+    if (argc == 4) {
+        leerConfig(argv[3], &config_juego);
+    }
+
+    // calculo real de las partidas
+    int partidas_posibles = n_jugadores / 2;
+
+    printf("Iniciando servidor: %d jugadores formaran %d partidas totales (Max mesas simultaneas: %d)\n", n_jugadores, partidas_posibles, m_mesas);
 
     pid_mesas = malloc(m_mesas * sizeof(pid_t));
     if (pid_mesas == NULL) {
         perror("Error de memoria");
         return -1;
     }
-
-    // limpieza del arreglo
     for(int i = 0; i < m_mesas; i++) pid_mesas[i] = 0;
 
-    for (int i = 0; i < mesas_por_crear; i++) {
+    int partidas_activas = 0;
+    int partidas_despachadas = 0;
+
+    // llenar las mesas inicialmente
+    for (int i = 0; i < m_mesas && partidas_despachadas < partidas_posibles; i++) {
         pid_t pid = fork();
 
         if (pid < 0) {
             perror("Error al hacer fork");
-            return -1;
         } 
         else if (pid == 0) {
-            printf("[Mesa %d] Iniciada con PID: %d\n", i + 1, getpid());
-            iniciarPartida(i); // se ejecuta la mesa
+            printf("[Partida %d] Iniciada en Mesa %d con PID: %d\n", partidas_despachadas + 1, i + 1, getpid());
+            iniciarPartida(partidas_despachadas, &config_juego); 
         }
         else {
             pid_mesas[i] = pid; 
+            partidas_activas++;
+            partidas_despachadas++;
         }
     }
 
-    // el padre espera a los hijos
-    for (int i = 0; i < mesas_por_crear; i++) {
-        waitpid(pid_mesas[i], NULL, 0);
+    while (partidas_activas > 0) {
+        pid_t pid_terminado = wait(NULL); // espera a que cualquier mesa termine
+        
+        if (pid_terminado > 0) {
+            partidas_activas--;
+
+            // busca que mesa se desocupo
+            int mesa_liberada = -1;
+            for (int i = 0; i < m_mesas; i++) {
+                if (pid_mesas[i] == pid_terminado) {
+                    pid_mesas[i] = 0; 
+                    mesa_liberada = i;
+                    break;
+                }
+            }
+
+            // mete los jugadores en espera a la mesa libre
+            if (partidas_despachadas < partidas_posibles && mesa_liberada != -1) {
+                pid_t pid = fork();
+
+                if (pid < 0) {
+                    perror("Error al hacer fork");
+                } 
+                else if (pid == 0) {
+                    printf("[Partida %d] Iniciada en Mesa %d (Reciclada) con PID: %d\n", partidas_despachadas + 1, mesa_liberada + 1, getpid());
+                    iniciarPartida(partidas_despachadas, &config_juego);
+                } 
+                else {
+                    pid_mesas[mesa_liberada] = pid; 
+                    partidas_activas++;
+                    partidas_despachadas++;
+                }
+            }
+        }
     }
 
     free(pid_mesas);
-    printf("Torneo terminado. Todas las mesas se cerraron correctamente.\n");
+    printf("Torneo terminado. %d partidas ejecutadas exitosamente.\n", partidas_posibles);
     return 0;
 }
