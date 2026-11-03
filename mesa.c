@@ -1,90 +1,300 @@
+#define _DEFAULT_SOURCE
+#define _POSIX_C_SOURCE 200809L
 #include "mesa.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <time.h>
+#include <signal.h> // ctrl + c
 
-//funcionamiento de la partida, mutex, tablero, movimientos
+struct Mesa *mesa_hijo_ptr = NULL;
 
-void agregar_vecino(struct Casilla *c, int id_vecino) {// funcion auxiliar para insertar las conexiones de manera limpia
+void detener(int sig){
+    (void)sig;
+    if(mesa_hijo_ptr != NULL){
+        mesa_hijo_ptr->juego_activo = false; // esto saca a los hilos de su ciclo y al juez
+    }
+}
+
+void agregarVecino(struct Casilla *c, int id_vecino) {
     if (c->cant_vecinos < 8) {
         c->id_vecinos[c->cant_vecinos] = id_vecino;
         c->cant_vecinos++;
     }
 }
 
-void mapear_vecinos(struct Mesa *mesa) {
+void mapearVecinos(struct Mesa *mesa) {
     // conexiones para la parte de 5*5 de la cuadricula (va desde el indice 3 al 27)
     for (int fila = 0; fila < 5; fila++) {
         for (int col = 0; col < 5; col++) {
             int actual = 3 + (fila * 5) + col;
 
-            // Conexiones ortogonales
-            if (col > 0) agregar_vecino(&mesa->tablero[actual], actual - 1); // izquierda
-            if (col < 4) agregar_vecino(&mesa->tablero[actual], actual + 1); //derecha
-            if (fila > 0) agregar_vecino(&mesa->tablero[actual], actual - 5); // arriba
-            if (fila < 4) agregar_vecino(&mesa->tablero[actual], actual + 5); // abajo
+            // conexiones perpendiculares
+            if (col > 0) agregarVecino(&mesa->casilla[actual], actual - 1); 
+            if (col < 4) agregarVecino(&mesa->casilla[actual], actual + 1); 
+            if (fila > 0) agregarVecino(&mesa->casilla[actual], actual - 5); 
+            if (fila < 4) agregarVecino(&mesa->casilla[actual], actual + 5); 
 
             // conexiones diagonales (solo en intersecciones donde fila+col es par)
             if ((fila + col) % 2 == 0) {
-                if (fila > 0 && col > 0) agregar_vecino(&mesa->tablero[actual], actual - 6);
-                if (fila > 0 && col < 4) agregar_vecino(&mesa->tablero[actual], actual - 4);
-                if (fila < 4 && col > 0) agregar_vecino(&mesa->tablero[actual], actual + 4);
-                if (fila < 4 && col < 4) agregar_vecino(&mesa->tablero[actual], actual + 6);
+                if (fila > 0 && col > 0) agregarVecino(&mesa->casilla[actual], actual - 6);
+                if (fila > 0 && col < 4) agregarVecino(&mesa->casilla[actual], actual - 4);  //OJO REVISAR
+                if (fila < 4 && col > 0) agregarVecino(&mesa->casilla[actual], actual + 4);
+                if (fila < 4 && col < 4) agregarVecino(&mesa->casilla[actual], actual + 6);
             }
         }
     }
 
-    // conexiones manuales en la parte asimetrica (indices 0, 1 y 2)
-    // nodo 0: trono
-    agregar_vecino(&mesa->tablero[0], 1);
-    agregar_vecino(&mesa->tablero[0], 2);
-    agregar_vecino(&mesa->tablero[0], 5); // Conecta directo al centro de la primera fila
+    // conexiones manuales en la parte asimetrica del trono
+    agregarVecino(&mesa->casilla[0], 1);
+    agregarVecino(&mesa->casilla[0], 2);
+    agregarVecino(&mesa->casilla[0], 5); 
+    
+    agregarVecino(&mesa->casilla[1], 0);
+    agregarVecino(&mesa->casilla[1], 2);
+    agregarVecino(&mesa->casilla[1], 3); 
+    agregarVecino(&mesa->casilla[1], 5); 
 
-    // nodo 1: abajo del trono lado izq
-    agregar_vecino(&mesa->tablero[1], 0);
-    agregar_vecino(&mesa->tablero[1], 2);
-    agregar_vecino(&mesa->tablero[1], 3); // esquina sup izq de la cuadricula
-    agregar_vecino(&mesa->tablero[1], 5); // centro sup de la cuadricula
+    agregarVecino(&mesa->casilla[2], 0);
+    agregarVecino(&mesa->casilla[2], 1);
+    agregarVecino(&mesa->casilla[2], 5);
+    agregarVecino(&mesa->casilla[2], 7); 
 
-    // nodo 2: abajo del trono lado der
-    agregar_vecino(&mesa->tablero[2], 0);
-    agregar_vecino(&mesa->tablero[2], 1);
-    agregar_vecino(&mesa->tablero[2], 5);
-    agregar_vecino(&mesa->tablero[2], 7); // Esquina sup der de la cuadricula
-
-    // conexiones de retorno desde la base de la cuadricula hacia el trono
-    agregar_vecino(&mesa->tablero[3], 1);
-    agregar_vecino(&mesa->tablero[5], 0);
-    agregar_vecino(&mesa->tablero[5], 1);
-    agregar_vecino(&mesa->tablero[5], 2);
-    agregar_vecino(&mesa->tablero[7], 2);
+    // conexiones de retorno
+    agregarVecino(&mesa->casilla[3], 1);
+    agregarVecino(&mesa->casilla[5], 0);
+    agregarVecino(&mesa->casilla[5], 1);
+    agregarVecino(&mesa->casilla[5], 2);
+    agregarVecino(&mesa->casilla[7], 2);
 }
 
-void inicializar_mesa(struct Mesa *mesa) {
+void inicializarMesa(struct Mesa *mesa) {
     mesa->juego_activo = true;
     mesa->perros_capturados = 0;
-    mesa->estado = 1; //asi marcamos la mesa como ocupada
+    mesa->estado = 1; // ocupada
 
-    // se nicializan todas las casillas
     for (int i = 0; i < num_casillas; i++) {
-        mesa->tablero[i].nro_casilla = i;
-        mesa->tablero[i].ocupante = libre;
-        mesa->tablero[i].cant_vecinos = 0;
+        mesa->casilla[i].nro_casilla = i;
+        mesa->casilla[i].ocupante = libre;
+        mesa->casilla[i].cant_vecinos = 0;
         
-        if (pthread_mutex_init(&mesa->tablero[i].lock, NULL) != 0) {
+        if (pthread_mutex_init(&mesa->casilla[i].lock, NULL) != 0) {
             perror("error al inicializar el mutex de la casilla");
             exit(EXIT_FAILURE);
         }
     }
 
-    // aqui llamaremos a la funcion que conecta los vecinos
-    mapear_vecinos(mesa);
+    mapearVecinos(mesa);
 
-    // Aqu pondremos las fichas en sus posiciones iniciales
-    mesa->tablero[0].ocupante = puma;
+    mesa->casilla[0].ocupante = puma;
     
-    // asignar los 12 perros en las filas inferiores (como por ej los indices 16 al 27)
-    for (int i = 16; i < num_casillas; i++) {
-        mesa->tablero[i].ocupante = perro;
+    for (int i = 16; i < num_casillas; i++) { //disposicion en las de abajo
+        mesa->casilla[i].ocupante = perro;
     }
 }
 
+int calcularSalto(int origen, int medio) {
+    if (origen == 0 && medio == 1) return 3;
+    if (origen == 3 && medio == 1) return 0;
+    if (origen == 0 && medio == 2) return 7;        //logica de salto en el triangulo
+    if (origen == 7 && medio == 2) return 0;
+    if (origen == 0 && medio == 5) return 10;
+    if (origen == 10 && medio == 5) return 0;
+
+    int delta = medio - origen;
+    int destino = medio + delta;
+
+    if (destino < 3 || destino >= num_casillas) return -1;
+    
+    int col_origen = (origen - 3) % 5;
+    int col_destino = (destino - 3) % 5;
+    if (abs(col_origen - col_destino) > 2) return -1; 
+
+    return destino;
+}
+
+void *rutinaJugador(void *arg) {
+    struct infojugador *info = (struct infojugador *)arg;
+    struct Mesa *mesa = info->mesa;
+    
+    unsigned int seed = time(NULL) + info->id_jugador;
+
+    while (mesa->juego_activo) {
+        int ms_retardo = (rand_r(&seed) % 251) + 50;
+        usleep(ms_retardo * 1000);
+
+        if (!mesa->juego_activo) break;
+
+        int pos_actual = info->pos_actual;
+        if (mesa->casilla[pos_actual].cant_vecinos == 0) continue;
+        
+        int indice_vecino = rand_r(&seed) % mesa->casilla[pos_actual].cant_vecinos; //genera indice aleatorio para cambiarse de casilla entre los vecinos
+        int vecino = mesa->casilla[pos_actual].id_vecinos[indice_vecino];
+
+        int destino_salto = -1;
+        if (info->tipo_ficha == puma && mesa->casilla[vecino].ocupante == perro) { //siendo puma, ve la posibilidad de comerse un perro
+            destino_salto = calcularSalto(pos_actual, vecino);
+        }
+
+        if (destino_salto != -1) {
+            // regla anti-deadlock 3 casillas puma
+            int ids[3] = {pos_actual, vecino, destino_salto};
+            for (int x = 0; x < 2; x++) { //bubble sort, ordena de menor a mayor
+                for (int y = 0; y < 2 - x; y++) {
+                    if (ids[y] > ids[y+1]) {
+                        int temp = ids[y];
+                        ids[y] = ids[y+1];
+                        ids[y+1] = temp;
+                    }
+                }
+            }
+
+            pthread_mutex_lock(&mesa->casilla[ids[0]].lock);
+            pthread_mutex_lock(&mesa->casilla[ids[1]].lock);
+            pthread_mutex_lock(&mesa->casilla[ids[2]].lock);
+
+            if (mesa->casilla[pos_actual].ocupante == puma && 
+                mesa->casilla[vecino].ocupante == perro && 
+                mesa->casilla[destino_salto].ocupante == libre) { //puma se come al perro
+                
+                mesa->casilla[vecino].ocupante = libre; 
+                mesa->casilla[destino_salto].ocupante = puma;
+                mesa->casilla[pos_actual].ocupante = libre;
+                info->pos_actual = destino_salto;
+                
+                mesa->perros_capturados++; 
+                printf("\nEl puma salto y se comio al perro %d cayendo en %d, total capturados: %d\n", vecino, destino_salto, mesa->perros_capturados);
+            }
+
+            pthread_mutex_unlock(&mesa->casilla[ids[2]].lock);
+            pthread_mutex_unlock(&mesa->casilla[ids[1]].lock);
+            pthread_mutex_unlock(&mesa->casilla[ids[0]].lock);
+        } 
+        else {
+            // movimiento normal
+            int id_primero;
+            int id_segundo;
+
+            if (pos_actual < vecino) { //se ordena de menor a mayor
+                id_primero = pos_actual;
+                id_segundo = vecino;
+            } else {
+                id_primero = vecino;
+                id_segundo = pos_actual;
+            }
+
+            pthread_mutex_lock(&mesa->casilla[id_primero].lock);
+            pthread_mutex_lock(&mesa->casilla[id_segundo].lock);
+
+            if (mesa->casilla[vecino].ocupante == libre) {
+                mesa->casilla[vecino].ocupante = info->tipo_ficha;
+                mesa->casilla[pos_actual].ocupante = libre;
+                info->pos_actual = vecino;
+            }
+
+            pthread_mutex_unlock(&mesa->casilla[id_segundo].lock);
+            pthread_mutex_unlock(&mesa->casilla[id_primero].lock);
+        }
+    }
+    return NULL;
+}
+
+void iniciarPartida(int id_mesa) {
+    struct Mesa mesa;
+    
+    mesa_hijo_ptr = &mesa;
+    signal(SIGTERM, detener);
+
+    inicializarMesa(&mesa);
+
+    pthread_t hilos[13];
+    struct infojugador info_hilos[13];
+
+    // hilo Puma
+    info_hilos[0].id_jugador = 0;
+    info_hilos[0].tipo_ficha = puma;
+    info_hilos[0].pos_actual = 0; 
+    info_hilos[0].mesa = &mesa;
+    pthread_create(&hilos[0], NULL, rutinaJugador, (void *)&info_hilos[0]);
+
+    // 12 hilos Perros
+    for (int j = 1; j <= 12; j++) {
+        info_hilos[j].id_jugador = j;
+        info_hilos[j].tipo_ficha = perro;
+        info_hilos[j].pos_actual = 15 + j; 
+        info_hilos[j].mesa = &mesa;
+        pthread_create(&hilos[j], NULL, rutinaJugador, (void *)&info_hilos[j]);
+    }
+
+    // funcionamiento juez
+    while (mesa.juego_activo) {
+        usleep(500000); // revisa cada 500 ms
+
+        // victoria puma
+        if (mesa.perros_capturados >= 6) {
+            printf("\n[Juez Mesa %d] Gana el PUMA ya que capturo 6 perros.\n", id_mesa + 1);
+            mesa.juego_activo = false;
+            break;
+        }
+
+        // victoria de los perros
+        int pos_puma = info_hilos[0].pos_actual;
+        int cant_vecinos = mesa.casilla[pos_puma].cant_vecinos;
+        
+        // agrupar casilla actual + todos los vecinos
+        int ids_bloqueo[9]; 
+        ids_bloqueo[0] = pos_puma;
+        for (int v = 0; v < cant_vecinos; v++) {
+            ids_bloqueo[v + 1] = mesa.casilla[pos_puma].id_vecinos[v];
+        }
+        
+        int total_locks = cant_vecinos + 1;
+
+        // ordenar arreglo de menor a mayor (bubble sort)
+        for (int x = 0; x < total_locks - 1; x++) {
+            for (int y = 0; y < total_locks - x - 1; y++) {
+                if (ids_bloqueo[y] > ids_bloqueo[y + 1]) {
+                    int temp = ids_bloqueo[y];
+                    ids_bloqueo[y] = ids_bloqueo[y + 1];
+                    ids_bloqueo[y + 1] = temp;
+                }
+            }
+        }
+
+        // asegurar mutex en cada una de las casillas
+        for (int x = 0; x < total_locks; x++) {
+            pthread_mutex_lock(&mesa.casilla[ids_bloqueo[x]].lock);
+        }
+
+        bool puma_atrapado = true;
+        for (int v = 0; v < mesa.casilla[pos_puma].cant_vecinos; v++) { //verifica que todos los vecinos del puma esten ocupados por perros
+            int destino = mesa.casilla[pos_puma].id_vecinos[v];
+            if (mesa.casilla[destino].ocupante == libre) {
+                puma_atrapado = false;
+                break;
+            }
+        }
+        
+        // liberar mutex en orden inverso
+        for (int x = total_locks - 1; x >= 0; x--) {
+            pthread_mutex_unlock(&mesa.casilla[ids_bloqueo[x]].lock);
+        }
+
+        if (puma_atrapado) {
+            printf("\n[Juez Mesa %d] Ganan los PERROS, el puma esta acorralado.\n", id_mesa + 1);
+            mesa.juego_activo = false;
+            break;
+        }
+    }
+
+    // esperar hilos y limpiar memoria antes de morir (Exigencia Rubrica)
+    for (int j = 0; j < 13; j++) {
+        pthread_join(hilos[j], NULL);
+    } 
+    for(int i = 0; i < num_casillas; i++){
+        pthread_mutex_destroy(&mesa.casilla[i].lock);
+    }
+    
+    printf("[Mesa %d] Finalizada limpiamente.\n", id_mesa + 1);
+    exit(EXIT_SUCCESS); 
+}

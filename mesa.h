@@ -4,7 +4,7 @@
 #define puma 0
 #define perro 1
 #define libre 2
-#define num_casillas 28 // lo cambie martin para mejor manejo en los for
+#define num_casillas 28 
 
 #include <pthread.h>
 #include <stdbool.h> 
@@ -19,11 +19,10 @@ struct Casilla{
 };
 
 struct Mesa{
-
     int estado; //0 libre, 1 ocupada
-    struct Casilla tablero[num_casillas]; 
+    struct Casilla casilla[num_casillas]; 
 
-    // variables para el control del juez sobre la partida(si la termina ono)
+    // variables para el control del juez sobre la partida
     bool juego_activo;
     int perros_capturados;
 };
@@ -35,5 +34,8 @@ struct infojugador {
     int pos_actual;
     struct Mesa *mesa;
 };
+
+// invoca el servidor
+void iniciarPartida(int id_mesa);
 
 #endif
