@@ -18,7 +18,8 @@ struct Config {
 
 struct Casilla {
     int nro_casilla;      
-    int ocupante;  
+    int ocupante;
+    int id_ficha;  // id_jugador de la ficha que esta en la casilla, -1 si esta libre
     pthread_mutex_t lock;   
     
     int id_vecinos[8]; 
@@ -32,6 +33,7 @@ struct Mesa {
     // variables para el control del juez sobre la partida
     bool juego_activo;
     int perros_capturados;
+    bool viva[13]; // false si la ficha fue capturada, su hilo termina
     
     struct Config config; // se guarda la config
 };

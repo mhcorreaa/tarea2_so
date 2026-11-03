@@ -35,6 +35,27 @@ void detenerJuego(int sig){  //ctrl + c
     exit(0);
 }
 
+void corregirPosiciones(struct Config *config_juego) { //evita dos fichas en la misma casilla (por defecto o por config)
+
+    bool usada[num_casillas] = {false};
+
+    for (int i = 0; i < 13; i++) {
+
+        int pos = config_juego->posiciones[i];
+
+        if (pos < 0 || pos >= num_casillas || usada[pos]) { //casilla invalida o ya ocupada
+
+            int casilla_libre = 0;
+            while (usada[casilla_libre]) casilla_libre++; //primera casilla sin ficha
+
+            printf("Advertencia: la ficha %d no puede partir en la casilla %d (ocupada o invalida), se mueve a la casilla %d.\n", i, pos, casilla_libre);
+            config_juego->posiciones[i] = casilla_libre;
+            pos = casilla_libre;
+        }
+        usada[pos] = true;
+    }
+}
+
 bool esNumero(char *str) {  //revisa que los argumentos en la invocacion sean nros
     for (int i = 0; str[i] != '\0'; i++) {
         if (!isdigit(str[i])) return false;
@@ -54,6 +75,8 @@ void leerConfig(char *nombre_archivo, struct Config *config_juego) { //lee el ar
 
     char buffer[512];
 
+    int temp_min_time = 0, temp_max_time = 0;
+
     while (fgets(buffer, sizeof(buffer), read) != NULL){
 
         char *linea = buffer;
@@ -65,11 +88,11 @@ void leerConfig(char *nombre_archivo, struct Config *config_juego) { //lee el ar
 
         if (clave != NULL && valor != NULL && strlen(valor) > 0){
 
-            if (strcmp(clave, "seed") == 0) config_juego->seed = (unsigned int)atoi(valor);
+            if (strcmp(clave, "seed") == 0 && esNumero(valor)) config_juego->seed = (unsigned int)atoi(valor);
             
-            else if (strcmp(clave, "min_time") == 0) config_juego->min_time = atoi(valor);
+            else if (strcmp(clave, "min_time") == 0 && esNumero(valor)) temp_min_time = atoi(valor);
                 
-            else if (strcmp(clave, "max_time") == 0) config_juego->max_time = atoi(valor);
+            else if (strcmp(clave, "max_time") == 0 && esNumero(valor)) temp_max_time = atoi(valor);
                 
             else if (strcmp(clave, "positions") == 0) {
                 
@@ -78,13 +101,21 @@ void leerConfig(char *nombre_archivo, struct Config *config_juego) { //lee el ar
                 for (int i = 0; i < 13; i++) {
 
                     char *num = strsep(&pos_str, ",");
-
-                    if (num != NULL && strlen(num) > 0) config_juego->posiciones[i] = atoi(num);
+                    
+                    if (num != NULL && strlen(num) > 0 && esNumero(num) && atoi(num) < num_casillas) config_juego->posiciones[i] = atoi(num);
                 }
             }
         }
     }
+
     fclose(read);
+
+    if(temp_min_time < temp_max_time){ //valida que el tiempo de espera sea valido antes de ingresarlo
+
+        config_juego->min_time = temp_min_time;
+        config_juego->max_time = temp_max_time;
+    }
+
     printf("Configuracion cargada desde '%s'.\n", nombre_archivo);
 }
 
@@ -122,6 +153,8 @@ int main(int argc, char *argv[]){
     if (argc == 4) {
         leerConfig(argv[3], &config_juego);
     }
+
+    corregirPosiciones(&config_juego);
 
     // calculo real de las partidas
     int partidas_posibles = n_jugadores / 2;

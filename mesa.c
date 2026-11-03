@@ -35,13 +35,13 @@ void mapearVecinos(struct Mesa *mesa) {
             if (fila > 0) agregarVecino(&mesa->casilla[actual], actual - 5);  //arriba
             if (fila < 4) agregarVecino(&mesa->casilla[actual], actual + 5);  //abajo
 
-            // conexiones diagonales (solo en intersecciones donde fila+col es par)
+            /* conexiones diagonales (solo en intersecciones donde fila+col es par)
             if ((fila + col) % 2 == 0) {
                 if (fila > 0 && col > 0) agregarVecino(&mesa->casilla[actual], actual - 6);
-                if (fila > 0 && col < 4) agregarVecino(&mesa->casilla[actual], actual - 4);  //OJO
+                if (fila > 0 && col < 4) agregarVecino(&mesa->casilla[actual], actual - 4);  //OJO comentado mientras el ayudante responde 
                 if (fila < 4 && col > 0) agregarVecino(&mesa->casilla[actual], actual + 4);
                 if (fila < 4 && col < 4) agregarVecino(&mesa->casilla[actual], actual + 6);
-            }
+            }*/
         }
     }
 
@@ -53,18 +53,18 @@ void mapearVecinos(struct Mesa *mesa) {
     agregarVecino(&mesa->casilla[1], 0);
     agregarVecino(&mesa->casilla[1], 2);
     agregarVecino(&mesa->casilla[1], 3); 
-    agregarVecino(&mesa->casilla[1], 5); 
+    //agregarVecino(&mesa->casilla[1], 5); 
 
     agregarVecino(&mesa->casilla[2], 0);
     agregarVecino(&mesa->casilla[2], 1);
-    agregarVecino(&mesa->casilla[2], 5);
+    //agregarVecino(&mesa->casilla[2], 5);
     agregarVecino(&mesa->casilla[2], 7); 
 
-    // conexiones de retorno
+    // conexiones fila 2 hacia triangulo
     agregarVecino(&mesa->casilla[3], 1);
     agregarVecino(&mesa->casilla[5], 0);
-    agregarVecino(&mesa->casilla[5], 1);
-    agregarVecino(&mesa->casilla[5], 2);
+    //agregarVecino(&mesa->casilla[5], 1);
+    //agregarVecino(&mesa->casilla[5], 2);
     agregarVecino(&mesa->casilla[7], 2);
 }
 
@@ -73,10 +73,13 @@ void inicializarMesa(struct Mesa *mesa) {
     mesa->perros_capturados = 0;
     mesa->estado = 1; // ocupada
 
+    for (int i = 0; i < 13; i++) mesa->viva[i] = true;
+
     for (int i = 0; i < num_casillas; i++) {
         mesa->casilla[i].nro_casilla = i;
         mesa->casilla[i].ocupante = libre;
         mesa->casilla[i].cant_vecinos = 0;
+        mesa->casilla[i].id_ficha = -1;
         
         if (pthread_mutex_init(&mesa->casilla[i].lock, NULL) != 0) {
             perror("error al inicializar el mutex de la casilla");
@@ -88,9 +91,11 @@ void inicializarMesa(struct Mesa *mesa) {
 
     // asignar ocupantes 
     mesa->casilla[mesa->config.posiciones[0]].ocupante = puma;
+    mesa->casilla[mesa->config.posiciones[0]].id_ficha = 0;
     
     for (int i = 1; i <= 12; i++) { 
         mesa->casilla[mesa->config.posiciones[i]].ocupante = perro;
+        mesa->casilla[mesa->config.posiciones[i]].id_ficha = i;
     }
 }
 
@@ -101,6 +106,7 @@ int calcularSalto(int origen, int medio) {
     if (origen == 7 && medio == 2) return 0;
     if (origen == 0 && medio == 5) return 10;
     if (origen == 10 && medio == 5) return 0;
+    if((origen == 1 && medio == 2) || (origen == 2 && medio == 1)) return -1;  //saltos no posibles
 
     int delta = medio - origen;
     int destino = medio + delta;
@@ -114,7 +120,8 @@ int calcularSalto(int origen, int medio) {
     return destino;
 }
 
-void *rutinaJugador(void *arg) {
+void *rutinaJugador(void *arg){
+
     struct infojugador *info = (struct infojugador *)arg;
     struct Mesa *mesa = info->mesa;
     
@@ -163,9 +170,15 @@ void *rutinaJugador(void *arg) {
                 mesa->casilla[vecino].ocupante == perro && 
                 mesa->casilla[destino_salto].ocupante == libre) { //puma se come al perro
                 
+                int id_capturado = mesa->casilla[vecino].id_ficha;
+                mesa->viva[id_capturado] = false; // el hilo de ese perro termina en su proximo intento de movimiento
+
                 mesa->casilla[vecino].ocupante = libre; 
+                mesa->casilla[vecino].id_ficha = -1;
                 mesa->casilla[destino_salto].ocupante = puma;
+                mesa->casilla[destino_salto].id_ficha = info->id_jugador;
                 mesa->casilla[pos_actual].ocupante = libre;
+                mesa->casilla[pos_actual].id_ficha = -1;
                 info->pos_actual = destino_salto;
                 
                 mesa->perros_capturados++; 
@@ -192,11 +205,20 @@ void *rutinaJugador(void *arg) {
             pthread_mutex_lock(&mesa->casilla[id_primero].lock);
             pthread_mutex_lock(&mesa->casilla[id_segundo].lock);
 
+            if (!mesa->viva[info->id_jugador]) { // la ficha fue capturada, deja de jugar
+                pthread_mutex_unlock(&mesa->casilla[id_segundo].lock);
+                pthread_mutex_unlock(&mesa->casilla[id_primero].lock);
+                break;
+            }
+
             if (mesa->casilla[vecino].ocupante == libre) {
                 mesa->casilla[vecino].ocupante = info->tipo_ficha;
+                mesa->casilla[vecino].id_ficha = info->id_jugador;
                 mesa->casilla[pos_actual].ocupante = libre;
+                mesa->casilla[pos_actual].id_ficha = -1;
                 info->pos_actual = vecino;
             }
+
 
             pthread_mutex_unlock(&mesa->casilla[id_segundo].lock);
             pthread_mutex_unlock(&mesa->casilla[id_primero].lock);
@@ -248,14 +270,20 @@ void iniciarPartida(int id_mesa, struct Config *config_juego) {
         int pos_puma = info_hilos[0].pos_actual;
         int cant_vecinos = mesa.casilla[pos_puma].cant_vecinos;
         
-        // agrupar casilla actual + todos los vecinos
-        int ids_bloqueo[9]; 
-        ids_bloqueo[0] = pos_puma;
+        // agrupar casilla actual + todos los vecinos + casillas de aterrizaje
+        int ids_bloqueo[17]; 
+        int total_locks = 0;
+        ids_bloqueo[total_locks++] = pos_puma;
+
         for (int v = 0; v < cant_vecinos; v++) {
-            ids_bloqueo[v + 1] = mesa.casilla[pos_puma].id_vecinos[v];
+
+            int vecino = mesa.casilla[pos_puma].id_vecinos[v];
+            ids_bloqueo[total_locks++] = vecino;
+
+            int salto = calcularSalto(pos_puma, vecino);
+            
+            if (salto != -1) ids_bloqueo[total_locks++] = salto;
         }
-        
-        int total_locks = cant_vecinos + 1;
 
         // ordenar arreglo de menor a mayor (bubble sort)
         for (int x = 0; x < total_locks - 1; x++) {
@@ -269,23 +297,44 @@ void iniciarPartida(int id_mesa, struct Config *config_juego) {
         }
 
         // asegurar mutex en cada una de las casillas
-        for (int x = 0; x < total_locks; x++) {
+        for (int x = 0; x < total_locks; x++){
+
+            if (x > 0 && ids_bloqueo[x] == ids_bloqueo[x - 1]) continue;
             pthread_mutex_lock(&mesa.casilla[ids_bloqueo[x]].lock);
         }
 
-        bool puma_atrapado = true;
-        for (int v = 0; v < mesa.casilla[pos_puma].cant_vecinos; v++) { //verifica que todos los vecinos del puma esten ocupados por perros
-            int destino = mesa.casilla[pos_puma].id_vecinos[v];
-            if (mesa.casilla[destino].ocupante == libre) {
-                puma_atrapado = false;
-                break;
+        bool puma_se_movio = (mesa.casilla[pos_puma].ocupante != puma);
+        bool puma_atrapado = false;
+
+        if (!puma_se_movio){
+
+            puma_atrapado = true;
+
+            for (int v = 0; v < cant_vecinos; v++) { //el puma no tiene movimientos si no hay vecino libre ni salto posible
+
+                int destino = mesa.casilla[pos_puma].id_vecinos[v];
+
+                if (mesa.casilla[destino].ocupante == libre) {
+                    puma_atrapado = false;
+                    break;
+                }
+
+                int salto = calcularSalto(pos_puma, destino); //vecino con perro, ve si puede comerselo
+
+                if (salto != -1 && mesa.casilla[salto].ocupante == libre) {
+                    puma_atrapado = false;
+                    break;
+                }
             }
         }
         
         // liberar mutex en orden inverso
         for (int x = total_locks - 1; x >= 0; x--) {
+            if (x > 0 && ids_bloqueo[x] == ids_bloqueo[x - 1]) continue;
             pthread_mutex_unlock(&mesa.casilla[ids_bloqueo[x]].lock);
         }
+
+        if (puma_se_movio) continue; // posicion vieja, se revisa en la siguiente vuelta
 
         if (puma_atrapado) {
             printf("\n[Juez Mesa %d] Ganan los PERROS, el puma esta acorralado.\n", id_mesa + 1);
@@ -294,7 +343,7 @@ void iniciarPartida(int id_mesa, struct Config *config_juego) {
         }
     }
 
-    // esperar hilos y limpiar memoria antes de morir (Exigencia Rubrica)
+    // esperar hilos y limpiar memoria antes de morir 
     for (int j = 0; j < 13; j++) {
         pthread_join(hilos[j], NULL);
     } 
