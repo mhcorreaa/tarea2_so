@@ -76,8 +76,11 @@ void inicializarMesa(struct Mesa *mesa) {
     if (pthread_mutex_init(&mesa->lock_juez, NULL) != 0) {
         perror("error al inicializar el lock_juez");
         exit(EXIT_FAILURE);
+    }
 
-    for (int i = 0; i < 13; i++) mesa->viva[i] = true;
+    for (int i = 0; i < 13; i++) {
+        mesa->viva[i] = true;
+    }
 
     for (int i = 0; i < num_casillas; i++) {
         mesa->casilla[i].nro_casilla = i;
