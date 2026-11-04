@@ -15,7 +15,7 @@ struct Config {
     int min_time;
     int max_time;
     unsigned int seed;
-    int posiciones[13]; // 0 puma, resto perros
+    int posiciones[13]; // 0 el puma los demas perros
 };
 
 struct Casilla {
@@ -33,7 +33,7 @@ struct Mesa {
     struct Casilla casilla[num_casillas]; 
 
     // variables para el control del juez sobre la partida
-    atomic_int juego_activo; // atomic porque lo leen y escriben varios hilos (y el handler de senales)
+    atomic_int juego_activo; // atomic porque lo leen y escriben varios hilos 
     atomic_int fallo_puma;   // 1 si el jugador puma abandono o fallo
     atomic_int fallo_perros; // 1 si el jugador perros abandono o fallo
     int id_mesa;

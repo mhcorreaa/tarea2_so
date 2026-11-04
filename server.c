@@ -42,11 +42,11 @@ void corregirPosiciones(struct Config *config_juego) { //evita dos fichas en la 
     }
 }
 
-void sigchldVacio(int sig){ // no hace nada, solo existe para que SIGCHLD despierte al sigsuspend del servidor
+void sigchldVacio(int sig){ // esto no hace nada solo existe para que SIGCHLD despierte al sigsuspend del servidor
     (void)sig;
 }
 
-// simula la llegada de los n jugadores (en orden aleatorio) y los empareja: un jugador puma con un jugador perros
+// simula la llegada de los n jugadores de manera aleatoria y los empareja un jugador puma 
 int armarParejas(int n_jugadores, unsigned int seed, int *pareja_puma, int *pareja_perros) {
 
     int *roles = malloc(n_jugadores * sizeof(int));
@@ -61,9 +61,9 @@ int armarParejas(int n_jugadores, unsigned int seed, int *pareja_puma, int *pare
         return -1;
     }
 
-    for (int i = 0; i < n_jugadores; i++) roles[i] = (i % 2 == 0) ? puma : perro; //mitad pumas, mitad perros
+    for (int i = 0; i < n_jugadores; i++) roles[i] = (i % 2 == 0) ? puma : perro; 
 
-    for (int i = n_jugadores - 1; i > 0; i--) { //se mezcla el orden de llegada
+    for (int i = n_jugadores - 1; i > 0; i--) { 
         int j = rand_r(&seed) % (i + 1);
         int temp = roles[i];
         roles[i] = roles[j];
@@ -85,13 +85,13 @@ int armarParejas(int n_jugadores, unsigned int seed, int *pareja_puma, int *pare
         if (n_puma > 0 && n_perros > 0) { // ya hay un puma y un perros esperando: se emparejan
             pareja_puma[parejas] = espera_puma[--n_puma];
             pareja_perros[parejas] = espera_perros[--n_perros];
-            printf("[Matchmaker] Pareja %d: jugador %d (PUMA) vs jugador %d (PERROS)\n", parejas + 1, pareja_puma[parejas], pareja_perros[parejas]);
+            printf("pareja %d: jugador %d puma vs jugadores %d perros\n", parejas + 1, pareja_puma[parejas], pareja_perros[parejas]);
             parejas++;
         }
     }
 
     if (server_activo && n_jugadores - (2 * parejas) > 0) {
-        printf("[Matchmaker] %d jugador(es) quedan sin pareja y no jugaran.\n", n_jugadores - (2 * parejas));
+        printf("jugadores que quedan sin pareja y no jugaran \n", n_jugadores - (2 * parejas));
     }
 
     free(roles);
@@ -119,7 +119,7 @@ void leerConfig(char *nombre_archivo, struct Config *config_juego) { //lee el ar
 
     char buffer[512];
 
-    int temp_min_time = config_juego->min_time, temp_max_time = config_juego->max_time; //parten con los valores por defecto, asi si el archivo no trae tiempos no quedan en 0
+    int temp_min_time = config_juego->min_time, temp_max_time = config_juego->max_time;
 
     while (fgets(buffer, sizeof(buffer), read) != NULL){
 
@@ -131,7 +131,7 @@ void leerConfig(char *nombre_archivo, struct Config *config_juego) { //lee el ar
         if (valor != NULL) {
             valor += strspn(valor, " \t"); //ignora espacios antes del valor
             size_t largo = strlen(valor);
-            while (largo > 0 && (valor[largo - 1] == ' ' || valor[largo - 1] == '\t' || valor[largo - 1] == '\r')) valor[--largo] = '\0'; //por si config.txt lo crean en windows (\r) o deja espacios al final
+            while (largo > 0 && (valor[largo - 1] == ' ' || valor[largo - 1] == '\t' || valor[largo - 1] == '\r')) valor[--largo] = '\0';
         }
 
         if (clave != NULL && valor != NULL && strlen(valor) > 0){
@@ -166,19 +166,18 @@ void leerConfig(char *nombre_archivo, struct Config *config_juego) { //lee el ar
         config_juego->max_time = temp_max_time;
     }
     else {
-        printf("Advertencia: tiempos invalidos (min %d, max %d), se usan los predeterminados.\n", temp_min_time, temp_max_time);
+        printf("tiempos invalidos (min %dy max %d) por lo que se usan los predeterminados.\n", temp_min_time, temp_max_time);
     }
 
     if (config_juego->min_time < 50 || config_juego->max_time > 300) {
-        printf("Advertencia: el enunciado pide retardos entre 50 y 300 ms (config: %d-%d ms).\n", config_juego->min_time, config_juego->max_time);
+        printf("los retardos deben estar entre 50 y 300 ms\n", config_juego->min_time, config_juego->max_time);
     }
 
-    printf("Configuracion cargada desde '%s'.\n", nombre_archivo);
 }
 
 int main(int argc, char *argv[]){
 
-    setvbuf(stdout, NULL, _IOLBF, 0); // salida por lineas, si no los hijos del fork repiten lo que quedo en el buffer cuando la salida va a un archivo o pipe
+    setvbuf(stdout, NULL, _IOLBF, 0); // salida por lineas pq si no los hijos del fork repiten lo que quedo en el buffer cuando la salida va a un archivo o pipe
 
     struct sigaction sa;
     sa.sa_handler = detenerJuego;
@@ -187,12 +186,12 @@ int main(int argc, char *argv[]){
     sigaction(SIGINT, &sa, NULL);
 
     if (argc < 3 || argc > 4) {
-        printf("Uso: %s <N_jugadores> <M_mesas> [config.txt]\n", argv[0]);
+        printf("uso %s <N_jugadores> <M_mesas> [config.txt]\n", argv[0]);
         return -1;
     }
 
     if (!esNumero(argv[1]) || !esNumero(argv[2])) {
-        printf("ERROR: Los argumentos deben ser numeros enteros positivos.\n");
+        printf("los argumentos deben ser numeros enteros positivos.\n");
         return -1;
     }
 
@@ -200,7 +199,7 @@ int main(int argc, char *argv[]){
     m_mesas = atoi(argv[2]);
 
     if (n_jugadores < 2 || m_mesas < 1) {
-        printf("ERROR: Deben haber minimo 2 jugadores y 1 mesa\n");
+        printf("deben haber minimo 2 jugadores y 1 mesa\n");
         return -1;
     }
 
@@ -219,14 +218,13 @@ int main(int argc, char *argv[]){
 
     corregirPosiciones(&config_juego);
 
-    // calculo real de las partidas (se ajusta despues de emparejar)
     int partidas_posibles = n_jugadores / 2;
 
-    printf("Iniciando servidor: %d jugadores formaran %d partidas totales (Max mesas simultaneas: %d)\n", n_jugadores, partidas_posibles, m_mesas);
+    printf("cargando el servidor %d jugadores formaran %d partidas totales%d)\n", n_jugadores, partidas_posibles, m_mesas);
 
     pid_mesas = malloc(m_mesas * sizeof(pid_t));
     if (pid_mesas == NULL) {
-        perror("Error de memoria");
+        perror("error de memoria");
         return -1;
     }
     for(int i = 0; i < m_mesas; i++) pid_mesas[i] = 0;
@@ -234,7 +232,7 @@ int main(int argc, char *argv[]){
     int *pareja_puma = malloc((partidas_posibles + 1) * sizeof(int));
     int *pareja_perros = malloc((partidas_posibles + 1) * sizeof(int));
     if (pareja_puma == NULL || pareja_perros == NULL) {
-        perror("Error de memoria");
+        perror("error de memoria");
         free(pareja_puma);
         free(pareja_perros);
         free(pid_mesas);
@@ -250,7 +248,7 @@ int main(int argc, char *argv[]){
         return -1;
     }
 
-    // SIGINT y SIGCHLD quedan bloqueadas y solo se reciben dentro de sigsuspend, asi un ctrl + c nunca se pierde justo antes de esperar
+    // SIGINT y SIGCHLD quedan bloqueadas y solo se reciben dentro de sigsuspend para que asi un ctrl + c nunca se pierde justo antes de esperar
     struct sigaction sc;
     sc.sa_handler = sigchldVacio;
     sigemptyset(&sc.sa_mask);
@@ -276,7 +274,7 @@ int main(int argc, char *argv[]){
         } 
         else if (pid == 0) {
             signal(SIGINT, SIG_IGN); // aqui lo agregue para que el hijo ignore ctrl+c
-            sigprocmask(SIG_SETMASK, &vacia, NULL); // el hijo hereda las senales bloqueadas, se desbloquean
+            sigprocmask(SIG_SETMASK, &vacia, NULL); // el hijo hereda las señales bloqueadas se desbloquean
             printf("[Partida %d] Iniciada en Mesa %d con PID: %d\n", partidas_despachadas + 1, i + 1, getpid());
             iniciarPartida(i, partidas_despachadas, &config_juego, pareja_puma[partidas_despachadas], pareja_perros[partidas_despachadas]); 
         }
@@ -292,7 +290,7 @@ int main(int argc, char *argv[]){
         pid_t pid_terminado = waitpid(-1, &estado, WNOHANG); // revisa si alguna mesa termino sin bloquearse
 
         if (pid_terminado == 0) {
-            sigsuspend(&vacia); // espera pasiva: desbloquea SIGINT y SIGCHLD de forma atomica y duerme hasta que llegue alguna
+            sigsuspend(&vacia); // aca se desbloquea SIGINT y SIGCHLD de forma atomica y duerme hasta que llegue alguna
             continue;
         }
         
@@ -305,10 +303,10 @@ int main(int argc, char *argv[]){
             partidas_activas--;
 
             if (!(WIFEXITED(estado) && WEXITSTATUS(estado) == 0)) { // la mesa no termino con exit(0): se cayo el proceso de la partida
-                printf("Advertencia: la mesa del proceso %d termino de forma anormal, la partida fue abortada.\n", pid_terminado);
+                printf("la mesa del proceso %d termino la partida\n", pid_terminado);
             }
 
-            // busca que mesa se desocupo
+            // busca que mesa esta desocupada
             int mesa_liberada = -1;
             for (int i = 0; i < m_mesas; i++) {
                 if (pid_mesas[i] == pid_terminado) {
@@ -360,9 +358,9 @@ int main(int argc, char *argv[]){
     free(pareja_perros);
 
     if (server_activo) {
-        printf("torneo terminado. %d partidas ejecutadas\n", partidas_despachadas);
+        printf("torneo terminado %d partidas ejecutadas\n", partidas_despachadas);
     } else {
-        printf("CTRL + C las partidas terminaron.\n");
+        printf("CTRL + C las partidas terminaron\n");
     }
     
     return 0;
