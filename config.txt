@@ -1,4 +1,4 @@
 seed:432432432
-min_time:12
-max_time:400
+min_time:50
+max_time:300
 positions:10,2,5,6,7,3,9,0,8,20,12,18,23

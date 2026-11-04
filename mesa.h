@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <stdbool.h> 
 #include <signal.h>
+#include <stdatomic.h>
 
 struct Config {
     int min_time;
@@ -32,9 +33,12 @@ struct Mesa {
     struct Casilla casilla[num_casillas]; 
 
     // variables para el control del juez sobre la partida
-    volatile sig_atomic_t juego_activo;
+    atomic_int juego_activo; // atomic porque lo leen y escriben varios hilos (y el handler de senales)
+    atomic_int fallo_puma;   // 1 si el jugador puma abandono o fallo
+    atomic_int fallo_perros; // 1 si el jugador perros abandono o fallo
+    int id_mesa;
     int perros_capturados;
-    bool viva[13]; // false si la ficha fue capturada, su hilo termina
+    bool viva[13]; 
 
     pthread_mutex_t lock_juez;
     
@@ -50,6 +54,6 @@ struct infojugador {
 };
 
 // invoca el servidor
-void iniciarPartida(int id_mesa, struct Config *config_juego);
+void iniciarPartida(int id_mesa, int id_partida, struct Config *config_juego, int jug_puma, int jug_perros);
 
 #endif
