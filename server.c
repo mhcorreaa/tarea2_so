@@ -177,7 +177,7 @@ void leerConfig(char *nombre_archivo, struct Config *config_juego) { //lee el ar
 
 int main(int argc, char *argv[]){
 
-    setvbuf(stdout, NULL, _IOLBF, 0); // salida por lineas pq si no los hijos del fork repiten lo que quedo en el buffer cuando la salida va a un archivo o pipe
+    setvbuf(stdout, NULL, _IOLBF, 0); // salida por lineas pq si no los hijos del fork repiten lo que quedo en el buffer
 
     struct sigaction sa;
     sa.sa_handler = detenerJuego;
@@ -274,7 +274,7 @@ int main(int argc, char *argv[]){
         } 
         else if (pid == 0) {
             signal(SIGINT, SIG_IGN); // aqui lo agregue para que el hijo ignore ctrl+c
-            sigprocmask(SIG_SETMASK, &vacia, NULL); // el hijo hereda las señales bloqueadas se desbloquean
+            sigprocmask(SIG_SETMASK, &vacia, NULL); // el hijo hereda las senales bloqueadas se desbloquean
             printf("[Partida %d] Iniciada en Mesa %d con PID: %d\n", partidas_despachadas + 1, i + 1, getpid());
             iniciarPartida(i, partidas_despachadas, &config_juego, pareja_puma[partidas_despachadas], pareja_perros[partidas_despachadas]); 
         }

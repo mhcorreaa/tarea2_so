@@ -60,7 +60,7 @@ void mapearVecinos(struct Mesa *mesa) {
             //conexiones diagonales (solo en intersecciones donde fila+col es par)
             if ((fila + col) % 2 == 0) {
                 if (fila > 0 && col > 0) agregarVecino(&mesa->casilla[actual], actual - 6);
-                if (fila > 0 && col < 4) agregarVecino(&mesa->casilla[actual], actual - 4);  //OJO comentado mientras el ayudante responde 
+                if (fila > 0 && col < 4) agregarVecino(&mesa->casilla[actual], actual - 4);  
                 if (fila < 4 && col > 0) agregarVecino(&mesa->casilla[actual], actual + 4);
                 if (fila < 4 && col < 4) agregarVecino(&mesa->casilla[actual], actual + 6);
             }
@@ -75,22 +75,22 @@ void mapearVecinos(struct Mesa *mesa) {
     agregarVecino(&mesa->casilla[1], 0);
     agregarVecino(&mesa->casilla[1], 2);
     agregarVecino(&mesa->casilla[1], 3); 
-    agregarVecino(&mesa->casilla[1], 4); // el nodo izquierdo del trono baja en vertical a la columna 1 (figura del enunciado)
-    //agregarVecino(&mesa->casilla[1], 5); 
+    agregarVecino(&mesa->casilla[1], 4); 
+    agregarVecino(&mesa->casilla[1], 5); 
 
     agregarVecino(&mesa->casilla[2], 0);
     agregarVecino(&mesa->casilla[2], 1);
-    //agregarVecino(&mesa->casilla[2], 5);
+    agregarVecino(&mesa->casilla[2], 5);
     agregarVecino(&mesa->casilla[2], 7); 
-    agregarVecino(&mesa->casilla[2], 6); // el nodo derecho del trono baja en vertical a la columna 3
+    agregarVecino(&mesa->casilla[2], 6);
 
     // conexiones fila 2 hacia triangulo
     agregarVecino(&mesa->casilla[3], 1);
     agregarVecino(&mesa->casilla[4], 1);
     agregarVecino(&mesa->casilla[6], 2);
     agregarVecino(&mesa->casilla[5], 0);
-    //agregarVecino(&mesa->casilla[5], 1);
-    //agregarVecino(&mesa->casilla[5], 2);
+    agregarVecino(&mesa->casilla[5], 1);
+    agregarVecino(&mesa->casilla[5], 2);
     agregarVecino(&mesa->casilla[7], 2);
 }
 
@@ -287,7 +287,7 @@ void *rutinaJugador(void *arg){
 void imprimirTablero(struct Mesa *mesa, int id_mesa) {
     char rep[num_casillas];
     
-    // lectura del tablero completo es decir se toman todos los locks en orden ascendente (mismo orden que los jugadores) para que la foto sea consistente
+    // lectura del tablero completo es decir se toman todos los locks en orden ascendente
     for (int i = 0; i < num_casillas; i++) {
         pthread_mutex_lock(&mesa->casilla[i].lock);
     }

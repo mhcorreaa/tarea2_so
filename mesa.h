@@ -42,7 +42,7 @@ struct Mesa {
 
     pthread_mutex_t lock_juez;
     
-    struct Config config; // se guarda la config
+    struct Config config;
 };
 
 // estructura para pasar argumentos a los hilos
