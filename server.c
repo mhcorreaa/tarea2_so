@@ -11,28 +11,13 @@
 #include <string.h> 
 #include <time.h>   
 
+volatile sig_atomic_t server_activo = 1;
 pid_t *pid_mesas = NULL;
 int m_mesas = 0;
 
 void detenerJuego(int sig){  //ctrl + c
     (void)sig;
-    printf("\nInterrumpiendo Servidor. Cerrando todas las mesas.\n");
-    
-    for(int i = 0; i < m_mesas; i++){
-        if(pid_mesas[i] > 0){
-            kill(pid_mesas[i], SIGTERM); //le manda la senal a las mesas
-        }
-    }
-
-    for(int i = 0; i < m_mesas; i++){
-        if(pid_mesas[i] > 0){
-            waitpid(pid_mesas[i], NULL, 0); //espera a que terminen
-        }
-    }
-
-    free(pid_mesas);
-    printf("CTRL + C. Partidas Terminadas.\n");
-    exit(0);
+    server_activo = 0; // martin aca cambie para arreglar lo que hablamos de printf o exit 
 }
 
 void corregirPosiciones(struct Config *config_juego) { //evita dos fichas en la misma casilla (por defecto o por config)
@@ -110,7 +95,7 @@ void leerConfig(char *nombre_archivo, struct Config *config_juego) { //lee el ar
 
     fclose(read);
 
-    if(temp_min_time < temp_max_time){ //valida que el tiempo de espera sea valido antes de ingresarlo
+    if(temp_min_time <= temp_max_time){ //valida que el tiempo de espera sea valido antes de ingresarlo
 
         config_juego->min_time = temp_min_time;
         config_juego->max_time = temp_max_time;
@@ -121,7 +106,11 @@ void leerConfig(char *nombre_archivo, struct Config *config_juego) { //lee el ar
 
 int main(int argc, char *argv[]){
 
-    signal(SIGINT, detenerJuego); 
+    struct sigaction sa;
+    sa.sa_handler = detenerJuego;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0; // sin SA_RESTART para que interrumpa el wait
+    sigaction(SIGINT, &sa, NULL);
 
     if (argc < 3 || argc > 4) {
         printf("Uso: %s <N_jugadores> <M_mesas> [config.txt]\n", argv[0]);
@@ -179,6 +168,7 @@ int main(int argc, char *argv[]){
             perror("Error al hacer fork");
         } 
         else if (pid == 0) {
+            signal(SIGINT, SIG_IGN); // aqui lo agregue para que el hijo ignore ctrl+c
             printf("[Partida %d] Iniciada en Mesa %d con PID: %d\n", partidas_despachadas + 1, i + 1, getpid());
             iniciarPartida(partidas_despachadas, &config_juego); 
         }
@@ -189,8 +179,13 @@ int main(int argc, char *argv[]){
         }
     }
 
-    while (partidas_activas > 0) {
+    while (partidas_activas > 0 && server_activo) {
         pid_t pid_terminado = wait(NULL); // espera a que cualquier mesa termine
+        
+        if (pid_terminado < 0) {
+            if (!server_activo) break; // si el wait fallo por el ctrl+c salimos del bucle
+            continue;
+        }
         
         if (pid_terminado > 0) {
             partidas_activas--;
@@ -206,13 +201,14 @@ int main(int argc, char *argv[]){
             }
 
             // mete los jugadores en espera a la mesa libre
-            if (partidas_despachadas < partidas_posibles && mesa_liberada != -1) {
+            if (partidas_despachadas < partidas_posibles && mesa_liberada != -1 && server_activo) {
                 pid_t pid = fork();
 
                 if (pid < 0) {
                     perror("Error al hacer fork");
                 } 
                 else if (pid == 0) {
+                    signal(SIGINT, SIG_IGN); // el hijo ignora ctrl+c
                     printf("[Partida %d] Iniciada en Mesa %d (Reciclada) con PID: %d\n", partidas_despachadas + 1, mesa_liberada + 1, getpid());
                     iniciarPartida(partidas_despachadas, &config_juego);
                 } 
@@ -225,7 +221,28 @@ int main(int argc, char *argv[]){
         }
     }
 
+    if (!server_activo) {
+        printf("\nInterrumpiendo Servidor. Cerrando todas las mesas.\n");
+        for(int i = 0; i < m_mesas; i++){
+            if(pid_mesas[i] > 0){
+                kill(pid_mesas[i], SIGTERM); //le manda la senal a las mesas
+            }
+        }
+    }
+
+    for(int i = 0; i < m_mesas; i++){
+        if(pid_mesas[i] > 0){
+            waitpid(pid_mesas[i], NULL, 0); //espera a que terminen
+        }
+    }
+
     free(pid_mesas);
-    printf("Torneo terminado. %d partidas ejecutadas exitosamente.\n", partidas_posibles);
+
+    if (server_activo) {
+        printf("Torneo terminado. %d partidas ejecutadas exitosamente.\n", partidas_posibles);
+    } else {
+        printf("CTRL + C. Partidas Terminadas.\n");
+    }
+    
     return 0;
 }

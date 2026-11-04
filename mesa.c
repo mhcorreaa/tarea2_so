@@ -35,13 +35,13 @@ void mapearVecinos(struct Mesa *mesa) {
             if (fila > 0) agregarVecino(&mesa->casilla[actual], actual - 5);  //arriba
             if (fila < 4) agregarVecino(&mesa->casilla[actual], actual + 5);  //abajo
 
-            /* conexiones diagonales (solo en intersecciones donde fila+col es par)
+            //conexiones diagonales (solo en intersecciones donde fila+col es par)
             if ((fila + col) % 2 == 0) {
                 if (fila > 0 && col > 0) agregarVecino(&mesa->casilla[actual], actual - 6);
                 if (fila > 0 && col < 4) agregarVecino(&mesa->casilla[actual], actual - 4);  //OJO comentado mientras el ayudante responde 
                 if (fila < 4 && col > 0) agregarVecino(&mesa->casilla[actual], actual + 4);
                 if (fila < 4 && col < 4) agregarVecino(&mesa->casilla[actual], actual + 6);
-            }*/
+            }
         }
     }
 
@@ -69,9 +69,13 @@ void mapearVecinos(struct Mesa *mesa) {
 }
 
 void inicializarMesa(struct Mesa *mesa) {
-    mesa->juego_activo = true;
+    mesa->juego_activo = 1; //lo cambie a uno por el sig_atomic_t
     mesa->perros_capturados = 0;
     mesa->estado = 1; // ocupada
+
+    if (pthread_mutex_init(&mesa->lock_juez, NULL) != 0) {
+        perror("error al inicializar el lock_juez");
+        exit(EXIT_FAILURE);
 
     for (int i = 0; i < 13; i++) mesa->viva[i] = true;
 
@@ -179,10 +183,13 @@ void *rutinaJugador(void *arg){
                 mesa->casilla[destino_salto].id_ficha = info->id_jugador;
                 mesa->casilla[pos_actual].ocupante = libre;
                 mesa->casilla[pos_actual].id_ficha = -1;
-                info->pos_actual = destino_salto;
                 
+                pthread_mutex_lock(&mesa->lock_juez);
+                info->pos_actual = destino_salto;
                 mesa->perros_capturados++; 
-                printf("\nEl puma salto y se comio al perro %d cayendo en %d, total capturados: %d\n", vecino, destino_salto, mesa->perros_capturados);
+                pthread_mutex_unlock(&mesa->lock_juez);
+                
+                printf("\nEl puma salto y se comio al perro %d cayendo en %d, total capturados: %d\n", id_capturado, destino_salto, mesa->perros_capturados);
             }
 
             pthread_mutex_unlock(&mesa->casilla[ids[2]].lock);
@@ -216,7 +223,10 @@ void *rutinaJugador(void *arg){
                 mesa->casilla[vecino].id_ficha = info->id_jugador;
                 mesa->casilla[pos_actual].ocupante = libre;
                 mesa->casilla[pos_actual].id_ficha = -1;
+                
+                pthread_mutex_lock(&mesa->lock_juez);
                 info->pos_actual = vecino;
+                pthread_mutex_unlock(&mesa->lock_juez);
             }
 
 
@@ -225,6 +235,33 @@ void *rutinaJugador(void *arg){
         }
     }
     return NULL;
+}
+
+void imprimirTablero(struct Mesa *mesa, int id_mesa) {
+    char rep[num_casillas];
+    
+    // Lectura rapida y segura del tablero
+    for (int i = 0; i < num_casillas; i++) {
+        pthread_mutex_lock(&mesa->casilla[i].lock);
+        if (mesa->casilla[i].ocupante == puma) rep[i] = 'U'; 
+        else if (mesa->casilla[i].ocupante == perro) rep[i] = 'P'; 
+        else rep[i] = '-'; 
+        pthread_mutex_unlock(&mesa->casilla[i].lock);
+    }
+
+    // Impresion basica en formato de texto plano
+    printf("\n--- Tablero Mesa %d ---\n", id_mesa + 1);
+    printf("Trono: [%c]\n", rep[0]);
+    printf("Nodos asimetricos: [%c] [%c]\n", rep[1], rep[2]);
+    printf("Cuadricula:\n");
+    
+    for (int fila = 0; fila < 5; fila++) {
+        for (int col = 0; col < 5; col++) {
+            printf("[%c] ", rep[3 + (fila * 5) + col]);
+        }
+        printf("\n");
+    }
+    printf("-----------------------\n\n");
 }
 
 void iniciarPartida(int id_mesa, struct Config *config_juego) {
@@ -259,15 +296,22 @@ void iniciarPartida(int id_mesa, struct Config *config_juego) {
     while (mesa.juego_activo) {
         usleep(500000); // revisa cada 500 ms
 
-        // victoria puma
-        if (mesa.perros_capturados >= 6) {
+        imprimirTablero(&mesa, id_mesa);
+
+        // aca bloqueamos y copiamos los valores a variables locales y desbloqueamos al instante
+        pthread_mutex_lock(&mesa.lock_juez);
+        int capturados_seguro = mesa.perros_capturados;
+        int pos_puma = info_hilos[0].pos_actual;
+        pthread_mutex_unlock(&mesa.lock_juez);
+
+        // victoria puma (ahora usamos la copia segura)
+        if (capturados_seguro >= 6) {
             printf("\n[Juez Mesa %d] Gana el PUMA ya que capturo 6 perros.\n", id_mesa + 1);
-            mesa.juego_activo = false;
+            mesa.juego_activo = 0;
             break;
         }
 
-        // victoria de los perros
-        int pos_puma = info_hilos[0].pos_actual;
+        // victoria de los perros (pos_puma ya fue leida de forma segura arriba)
         int cant_vecinos = mesa.casilla[pos_puma].cant_vecinos;
         
         // agrupar casilla actual + todos los vecinos + casillas de aterrizaje
@@ -350,6 +394,8 @@ void iniciarPartida(int id_mesa, struct Config *config_juego) {
     for(int i = 0; i < num_casillas; i++){
         pthread_mutex_destroy(&mesa.casilla[i].lock);
     }
+
+    pthread_mutex_destroy(&mesa.lock_juez);
     
     printf("[Mesa %d] Finalizada limpiamente.\n", id_mesa + 1);
     exit(EXIT_SUCCESS); 

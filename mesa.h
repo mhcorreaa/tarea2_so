@@ -8,6 +8,7 @@
 
 #include <pthread.h>
 #include <stdbool.h> 
+#include <signal.h>
 
 struct Config {
     int min_time;
@@ -31,9 +32,11 @@ struct Mesa {
     struct Casilla casilla[num_casillas]; 
 
     // variables para el control del juez sobre la partida
-    bool juego_activo;
+    volatile sig_atomic_t juego_activo;
     int perros_capturados;
     bool viva[13]; // false si la ficha fue capturada, su hilo termina
+
+    pthread_mutex_t lock_juez;
     
     struct Config config; // se guarda la config
 };
