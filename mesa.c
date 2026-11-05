@@ -374,7 +374,7 @@ void iniciarPartida(int id_mesa, int id_partida, struct Config *config_juego, in
 
     // funcionamiento juez
     while (mesa.juego_activo) {
-        dormirMs(&mesa, 50); // revisa cada 50 ms
+        dormirMs(&mesa, 20); // revisa cada 20 ms
 
         // un jugador abandono o fallo asi que se aborta la partida y gana el oponente
         if (mesa.fallo_puma) {
