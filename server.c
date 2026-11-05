@@ -91,7 +91,7 @@ int armarParejas(int n_jugadores, unsigned int seed, int *pareja_puma, int *pare
     }
 
     if (server_activo && n_jugadores - (2 * parejas) > 0) {
-        printf("jugadores que quedan sin pareja y no jugaran \n", n_jugadores - (2 * parejas));
+        printf("%d jugadores quedan sin pareja y no podran jugar \n", n_jugadores - (2 * parejas));
     }
 
     free(roles);
@@ -160,17 +160,13 @@ void leerConfig(char *nombre_archivo, struct Config *config_juego) { //lee el ar
 
     fclose(read);
 
-    if(temp_min_time >= 0 && temp_min_time <= temp_max_time){ //valida que el tiempo de espera sea valido antes de ingresarlo
+    if(temp_min_time >= 50  && temp_min_time <= 300  && temp_max_time >= 50 && temp_max_time <= 300 && temp_min_time <= temp_max_time){ //valida que el tiempo de espera sea valido antes de ingresarlo
 
         config_juego->min_time = temp_min_time;
         config_juego->max_time = temp_max_time;
     }
     else {
-        printf("tiempos invalidos (min %dy max %d) por lo que se usan los predeterminados.\n", temp_min_time, temp_max_time);
-    }
-
-    if (config_juego->min_time < 50 || config_juego->max_time > 300) {
-        printf("los retardos deben estar entre 50 y 300 ms\n", config_juego->min_time, config_juego->max_time);
+        printf("tiempos invalidos (min %d y max %d) por lo que se usan los predeterminados.\n", temp_min_time, temp_max_time);
     }
 
 }
@@ -220,7 +216,7 @@ int main(int argc, char *argv[]){
 
     int partidas_posibles = n_jugadores / 2;
 
-    printf("cargando el servidor %d jugadores formaran %d partidas totales%d)\n", n_jugadores, partidas_posibles, m_mesas);
+    printf("Cargando el servidor, %d jugadores formaran %d partidas totales distribuidas en %d mesas)\n", n_jugadores, partidas_posibles, m_mesas);
 
     pid_mesas = malloc(m_mesas * sizeof(pid_t));
     if (pid_mesas == NULL) {
@@ -273,10 +269,20 @@ int main(int argc, char *argv[]){
             perror("Error al hacer fork");
         } 
         else if (pid == 0) {
+
             signal(SIGINT, SIG_IGN); // aqui lo agregue para que el hijo ignore ctrl+c
             sigprocmask(SIG_SETMASK, &vacia, NULL); // el hijo hereda las senales bloqueadas se desbloquean
             printf("[Partida %d] Iniciada en Mesa %d con PID: %d\n", partidas_despachadas + 1, i + 1, getpid());
-            iniciarPartida(i, partidas_despachadas, &config_juego, pareja_puma[partidas_despachadas], pareja_perros[partidas_despachadas]); 
+
+            int id_partida = partidas_despachadas; // el hijo copia lo que necesita y libera los buffers heredados
+            int jug_puma = pareja_puma[id_partida];
+            int jug_perros = pareja_perros[id_partida];
+
+            free(pid_mesas);
+            free(pareja_puma);
+            free(pareja_perros);
+
+            iniciarPartida(i, id_partida, &config_juego, jug_puma, jug_perros); 
         }
         else {
             pid_mesas[i] = pid; 
@@ -324,10 +330,20 @@ int main(int argc, char *argv[]){
                     perror("Error al hacer fork");
                 } 
                 else if (pid == 0) {
+
                     signal(SIGINT, SIG_IGN); // el hijo ignora ctrl+c
                     sigprocmask(SIG_SETMASK, &vacia, NULL);
                     printf("[Partida %d] Iniciada en Mesa %d (Reciclada) con PID: %d\n", partidas_despachadas + 1, mesa_liberada + 1, getpid());
-                    iniciarPartida(mesa_liberada, partidas_despachadas, &config_juego, pareja_puma[partidas_despachadas], pareja_perros[partidas_despachadas]);
+
+                    int id_partida = partidas_despachadas;
+                    int jug_puma = pareja_puma[id_partida];
+                    int jug_perros = pareja_perros[id_partida];
+
+                    free(pid_mesas);
+                    free(pareja_puma);
+                    free(pareja_perros);
+                    
+                    iniciarPartida(mesa_liberada, id_partida, &config_juego, jug_puma, jug_perros);
                 } 
                 else {
                     pid_mesas[mesa_liberada] = pid; 

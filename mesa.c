@@ -139,12 +139,21 @@ int calcularSalto(int origen, int medio) {
     if (origen == 3 && medio == 1) return 0;
     if (origen == 0 && medio == 2) return 7;        //logica de salto en el triangulo
     if (origen == 7 && medio == 2) return 0;
-    if (origen == 0 && medio == 5) return 10;
+    if (origen == 0 && medio == 5) return 10;       
     if (origen == 10 && medio == 5) return 0;
     if (origen == 1 && medio == 4) return 9;
     if (origen == 9 && medio == 4) return 1;
     if (origen == 2 && medio == 6) return 11;
     if (origen == 11 && medio == 6) return 2;
+    if (origen == 1 && medio == 5) return 11;
+    if (origen == 11 && medio == 5) return 1;
+    if (origen == 2 && medio == 5) return 9;
+    if (origen == 9 && medio == 5) return 2;
+    if (origen == 1 && medio == 3) return 8;
+    if (origen == 8 && medio == 3) return 1;
+    if (origen == 2 && medio == 7) return 12;
+    if (origen == 12 && medio == 7) return 2;
+
     if((origen == 1 && medio == 2) || (origen == 2 && medio == 1)) return -1;  //saltos no posibles
 
     int delta = medio - origen;
@@ -365,7 +374,7 @@ void iniciarPartida(int id_mesa, int id_partida, struct Config *config_juego, in
 
     // funcionamiento juez
     while (mesa.juego_activo) {
-        dormirMs(&mesa, 500); // revisa cada 500 ms
+        dormirMs(&mesa, 50); // revisa cada 50 ms
 
         // un jugador abandono o fallo asi que se aborta la partida y gana el oponente
         if (mesa.fallo_puma) {
